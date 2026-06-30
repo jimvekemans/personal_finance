@@ -1,60 +1,72 @@
+// frontend/src/main.ts
 import './style.css'
-import typescriptLogo from './assets/typescript.svg'
-import viteLogo from './assets/vite.svg'
-import heroImg from './assets/hero.png'
-import { setupCounter } from './counter.ts'
 
 document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
-<section id="center">
-  <div class="hero">
-    <img src="${heroImg}" class="base" width="170" height="179">
-    <img src="${typescriptLogo}" class="framework" alt="TypeScript logo"/>
-    <img src="${viteLogo}" class="vite" alt="Vite logo" />
-  </div>
-  <div>
-    <h1>Get started</h1>
-    <p>Edit <code>src/main.ts</code> and save to test <code>HMR</code></p>
-  </div>
-  <button id="counter" type="button" class="counter"></button>
-</section>
+  <section id="expense-form-section">
+    <h1>Add Expense</h1>
+    <form id="expense-form">
+      <div>
+        <label for="item">Item</label>
+        <input type="text" id="item" name="item" required />
+      </div>
+      <div>
+        <label for="cost">Cost (€)</label>
+        <input type="number" id="cost" name="cost" step="0.01" required />
+      </div>
+      <div>
+        <label for="category">Category</label>
+        <select id="category" name="category" required>
+          <option value="fixed">Fixed</option>
+          <option value="groceries">Groceries</option>
+          <option value="personal">Personal</option>
+          <option value="other">Other</option>
+        </select>
+      </div>
+      <div>
+        <label for="who_paid">Who Paid</label>
+        <select id="who_paid" name="who_paid" required>
+          <option value="Jim">Jim</option>
+          <option value="Zina">Zina</option>
+        </select>
+      </div>
+      <button type="submit">Submit Expense</button>
+    </form>
+    <div id="status-message"></div>
+  </section>
+`;
 
-<div class="ticks"></div>
+const form = document.querySelector<HTMLFormElement>('#expense-form')!;
+const statusMessage = document.querySelector<HTMLDivElement>('#status-message')!;
 
-<section id="next-steps">
-  <div id="docs">
-    <svg class="icon" role="presentation" aria-hidden="true"><use href="/icons.svg#documentation-icon"></use></svg>
-    <h2>Documentation</h2>
-    <p>Your questions, answered</p>
-    <ul>
-      <li>
-        <a href="https://vite.dev/" target="_blank">
-          <img class="logo" src="${viteLogo}" alt="" />
-          Explore Vite
-        </a>
-      </li>
-      <li>
-        <a href="https://www.typescriptlang.org" target="_blank">
-          <img class="button-icon" src="${typescriptLogo}" alt="">
-          Learn more
-        </a>
-      </li>
-    </ul>
-  </div>
-  <div id="social">
-    <svg class="icon" role="presentation" aria-hidden="true"><use href="/icons.svg#social-icon"></use></svg>
-    <h2>Connect with us</h2>
-    <p>Join the Vite community</p>
-    <ul>
-      <li><a href="https://github.com/vitejs/vite" target="_blank"><svg class="button-icon" role="presentation" aria-hidden="true"><use href="/icons.svg#github-icon"></use></svg>GitHub</a></li>
-      <li><a href="https://chat.vite.dev/" target="_blank"><svg class="button-icon" role="presentation" aria-hidden="true"><use href="/icons.svg#discord-icon"></use></svg>Discord</a></li>
-      <li><a href="https://x.com/vite_js" target="_blank"><svg class="button-icon" role="presentation" aria-hidden="true"><use href="/icons.svg#x-icon"></use></svg>X.com</a></li>
-      <li><a href="https://bsky.app/profile/vite.dev" target="_blank"><svg class="button-icon" role="presentation" aria-hidden="true"><use href="/icons.svg#bluesky-icon"></use></svg>Bluesky</a></li>
-    </ul>
-  </div>
-</section>
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const formData = new FormData(form);
+  const data = {
+    item: formData.get('item'),
+    cost: parseFloat(formData.get('cost') as string),
+    category: formData.get('category'),
+    who_paid: formData.get('who_paid')
+  };
 
-<div class="ticks"></div>
-<section id="spacer"></section>
-`
+  try {
+    const response = await fetch('/api/expenses', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(data)
+    });
 
-setupCounter(document.querySelector<HTMLButtonElement>('#counter')!)
+    if (response.ok) {
+      statusMessage.textContent = 'Expense added successfully!';
+      statusMessage.style.color = 'green';
+      form.reset();
+    } else {
+      statusMessage.textContent = 'Failed to add expense.';
+      statusMessage.style.color = 'red';
+    }
+  } catch (error) {
+    statusMessage.textContent = 'Network error occurred.';
+    statusMessage.style.color = 'red';
+  }
+});

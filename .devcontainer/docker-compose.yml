@@ -5,12 +5,16 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    environment:
+      - PGDATA=/var/lib/postgresql/data
     user: "${HOST_UID}:${HOST_GID}"
     ports:
       - "5432:5432"
     volumes:
-      - ../.data/postgres:/var/lib/postgresql/data
+      - ../.data/postgres:/var/lib/postgresql
       - ../.data/init.sql:/docker-entrypoint-initdb.d/init.sql
+    tmpfs:
+      - /var/run/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s
