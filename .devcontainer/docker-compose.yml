@@ -35,7 +35,8 @@ services:
       db:
         condition: service_healthy
     volumes:
-      - ../backend:/usr/src/app
+      - ../backend:/app
+      - /app/target
 
   frontend:
     build:
@@ -44,6 +45,7 @@ services:
     container_name: finance_tracker_frontend
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "5173:5173"
     volumes:
       - ../frontend:/usr/src/app
+      - /usr/src/app/node_modules

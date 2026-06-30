@@ -6,9 +6,8 @@ edition = "2024"
 
 [dependencies]
 axum = "0.7"
-tokio = { version = "1.40", features = ["full"] }
+tokio = { version = "1.0", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-# Using arrow-adbc crates for database interaction
-adbc-core = "0.12"
-adbc-driver-manager = "0.12"
+sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "postgres", "bigdecimal"] }
+# Downgrade to 0.3 to match sqlx 0.7's internal dependency
+bigdecimal = { version = "0.3", features = ["serde"] }

@@ -1,77 +1,75 @@
-// /home/jim/Documents/finance_tracker/backend/src/main.rs
-use adbc_core::{options::AdbcVersion, Connection, Database, Optionable, Statement};
-use adbc_driver_manager::ManagedDriver;
-use axum::{routing::post, Json, Router};
+use axum::{extract::State, routing::post, Json, Router};
 use serde::Deserialize;
+use sqlx::postgres::{PgPool, PgPoolOptions};
 use std::env;
+use std::sync::Arc;
+use bigdecimal::BigDecimal; // <-- ADD THIS
 
 #[derive(Deserialize)]
 struct ExpensePayload {
     item: String,
-    cost: f64,
+    cost: BigDecimal, // <-- CHANGE f64 to BigDecimal
     category: String,
     who_paid: String,
 }
 
-#[tokio::main]
-async fn main() {
-    let app = Router::new().route("/api/expenses", post(add_expense));
-
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:8080").await.unwrap();
-    println!("Listening on 0.0.0.0:8080");
-    axum::serve(listener, app).await.unwrap();
+// 1. Create a struct to hold our shared database pool
+struct AppState {
+    db: PgPool,
 }
 
-async fn add_expense(Json(payload): Json<ExpensePayload>) -> Result<&'static str, axum::http::StatusCode> {
-    // Load the ADBC Driver dynamically
-    let mut driver = ManagedDriver::load_dynamic_from_filename(
-        "/usr/lib/libadbc_driver_postgresql.so",
-        None,
-        AdbcVersion::V1_0_0,
-    ).map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)?;
-
+#[tokio::main]
+async fn main() {
     let db_url = env::var("DATABASE_URL")
         .unwrap_or_else(|_| "postgres://admin:secret_pass@db:5432/finance_db".to_string());
 
-    let mut database = driver
-        .new_database()
-        .map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)?;
-        
-    database
-        .set_option("uri", &db_url)
-        .map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)?;
-        
-    database
-        .init()
-        .map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)?;
+    // 2. Initialize the connection pool ONCE at application startup
+    let pool = PgPoolOptions::new()
+        .max_connections(50)
+        .connect(&db_url)
+        .await
+        .expect("Failed to connect to Postgres");
 
-    let mut connection = database
-        .new_connection()
-        .map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)?;
-        
-    connection
-        .init()
-        .map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)?;
+    // Wrap the state in an Arc (Atomic Reference Counted) to safely share across threads
+    let shared_state = Arc::new(AppState { db: pool });
 
-    let mut statement = connection
-        .new_statement()
-        .map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)?;
+    // Inject the state into Axum
+    let app = Router::new()
+        .route("/api/expenses", post(add_expense))
+        .with_state(shared_state);
 
-    let sql = format!(
-        "INSERT INTO expenses (item, cost, category, who_paid) VALUES ('{}', {}, '{}', '{}')",
-        payload.item.replace("'", "''"), // Basic escaping
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:8080").await.unwrap();
+    println!("Listening on 0.0.0.0:8080");
+    
+    // This call blocks indefinitely
+    axum::serve(listener, app).await.unwrap();
+}
+
+// 3. Inject the shared state into the handler
+async fn add_expense(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<ExpensePayload>,
+) -> Result<&'static str, axum::http::StatusCode> {
+    
+    // 4. Use sqlx::query! for cached, injected-safe prepared statements
+    let result = sqlx::query!(
+        r#"
+        INSERT INTO expenses (item, cost, category, who_paid) 
+        VALUES ($1, $2, $3, $4)
+        "#,
+        payload.item,
         payload.cost,
-        payload.category.replace("'", "''"),
-        payload.who_paid.replace("'", "''")
-    );
+        payload.category,
+        payload.who_paid
+    )
+    .execute(&state.db)
+    .await;
 
-    statement
-        .set_sql_query(&sql)
-        .map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)?;
-        
-    statement
-        .execute()
-        .map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)?;
-
-    Ok("Expense added")
+    match result {
+        Ok(_) => Ok("Expense added"),
+        Err(e) => {
+            eprintln!("Database error: {}", e);
+            Err(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
 }
